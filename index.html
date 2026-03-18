@@ -508,7 +508,7 @@ function pushToCloud() {
   setSyncUI('syncing');
   const payload = JSON.stringify(mainDataOnly());
   fetch(SYNC_URL, {method:'POST', mode:'no-cors', body: payload})
-    .then(() => setSyncUI('synced'))
+    .then(() => { lastSyncHash = JSON.stringify(mainDataOnly()); setSyncUI('synced'); })
     .catch(() => setSyncUI(navigator.onLine ? 'error' : 'offline'));
 }
 
@@ -537,18 +537,16 @@ async function load() {
     const cloud = await res.json();
     const cd = parseCloudData(cloud);
     if(cd) {
-      const cloudTime = cd.lastModified || 0;
-      const localTime = data.lastModified || 0;
-      if(cloudTime > localTime) {
-        // הענן חדש יותר – משתמשים בענן
+      if(Date.now() - _lastSaveTime < 20000) {
+        // שמרנו לאחרונה – שומרים מקומי ודוחפים לענן
+        pushToCloud();
+      } else {
+        // לוקחים מהענן
         data = cd;
         applyImages(localImgs);
         saveLocal();
-      } else if(localTime > cloudTime) {
-        // המקומי חדש יותר – דוחפים לענן (בלי לשנות _lastSaveTime)
-        pushToCloud();
+        lastSyncHash = JSON.stringify(mainDataOnly());
       }
-      // שווים – אין שינוי
     }
     setSyncUI('synced');
   } catch(e){
@@ -565,13 +563,14 @@ async function pollCloud() {
     const cloud = await res.json();
     const cd = parseCloudData(cloud);
     if(cd) {
-      const cloudTime = cd.lastModified || 0;
-      const localTime = data.lastModified || 0;
-      if(cloudTime > localTime) {
+      const newHash = JSON.stringify(cd);
+      if(newHash !== lastSyncHash) {
+        // הענן השתנה – מכשיר אחר עדכן (דליה/יוסי)
         const localImgs = extractImages();
         data = cd;
         applyImages(localImgs);
         saveLocal();
+        lastSyncHash = newHash;
         renderAll();
         setSyncUI('synced');
       }
